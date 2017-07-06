@@ -1,9 +1,105 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'javax:javaee-api:7.0'
+        classpath 'org.glassfish.jersey.core:jersey-client:2.25.1'
+        classpath 'org.glassfish.jersey.media:jersey-media-multipart:2.25.1'
+        classpath 'org.glassfish.jersey.media:jersey-media-json-jackson:2.25.1'
+        classpath 'com.fasterxml.jackson.core:jackson-annotations:2.8.9'
+    }
+}
+
+import groovy.json.JsonSlurper
+import org.glassfish.jersey.client.ClientProperties
+import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature
+import org.glassfish.jersey.jackson.JacksonFeature
+import org.glassfish.jersey.media.multipart.MultiPart
+import org.glassfish.jersey.media.multipart.file.FileDataBodyPart
+import org.glassfish.jersey.media.multipart.internal.MultiPartWriter
+
+import javax.ws.rs.client.Client
+import javax.ws.rs.client.ClientBuilder
+import javax.ws.rs.client.Entity
+import javax.ws.rs.core.MediaType
+
 apply plugin: 'war'
 
+ext {
+    wildflyUser = 'admin'
+    wildflyPassword = 'admin'
+    wildflyManagementUrl = 'http://localhost:9990/management'
+}
+
 repositories {
-   jcenter()
+    jcenter()
 }
 
 dependencies {
     compileOnly 'javax:javaee-api:7.0'
 }
+
+def configureClient(Client client) {
+    client.register(MultiPartWriter.class);
+    client.register(JacksonFeature.class);
+    client.register(HttpAuthenticationFeature.digest(wildflyUser, wildflyPassword));
+}
+
+def addContent(Client client, File warFile) {
+    def multiPart = new MultiPart();
+    multiPart.setMediaType(MediaType.MULTIPART_FORM_DATA_TYPE);
+    def fileDataBodyPart = new FileDataBodyPart(
+            'file',
+            warFile,
+            MediaType.APPLICATION_OCTET_STREAM_TYPE);
+    multiPart.bodyPart(fileDataBodyPart);
+    def resource = client.target("$wildflyManagementUrl/add-content");
+    def response = resource
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .post(Entity.entity(multiPart, multiPart.getMediaType()));
+    def json = new JsonSlurper().parseText(response.readEntity(String.class))
+    return json.result.BYTES_VALUE
+}
+
+def manageContent(Client client, File warFile, String hash, boolean deploy) {
+    def map = [
+            'content'  :
+                    [
+                            [
+                                    'hash': [
+                                            'BYTES_VALUE': hash,
+                                    ],
+                            ],
+                    ],
+            'address'  :
+                    [
+                            [
+                                    'deployment': warFile.name,
+                            ],
+                    ],
+            'operation': deploy ? 'add' : 'remove',
+            'enabled'  : 'true',
+    ]
+    def entity = Entity.json(map)
+    def resource = client.target(wildflyManagementUrl)
+            .property(ClientProperties.FOLLOW_REDIRECTS, true)
+    return resource
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .post(entity);
+}
+
+task wildflyDeploy() {
+    doFirst {
+        println "Deploying $war.archivePath to $wildflyManagementUrl"
+        def client = ClientBuilder.newClient()
+        configureClient(client)
+        def warFile = file(war.archivePath)
+        def hash = addContent(client, warFile)
+        manageContent(client, warFile, hash, false)
+        manageContent(client, warFile, hash, true)
+    }
+}
+
+wildflyDeploy.dependsOn war
