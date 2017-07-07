@@ -1,10 +1,14 @@
 package hu.codecool.hangman;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class HangmanGame {
 
     public static final class Status {
 
         private Integer length;
+        private List<String> guesses = new ArrayList<>();
 
         public Status() {
         }
@@ -15,6 +19,10 @@ public final class HangmanGame {
 
         public void setLength(Integer length) {
             this.length = length;
+        }
+
+        public List<String> getGuesses() {
+            return guesses;
         }
     }
 
@@ -28,7 +36,8 @@ public final class HangmanGame {
         status.setLength(toGuess.length());
     }
 
-    public void guess() {
+    public void guess(String letter) {
+        status.getGuesses().add(letter);
     }
 
     public Status getStatus() {

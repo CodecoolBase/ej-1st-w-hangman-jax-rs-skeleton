@@ -1,5 +1,6 @@
 package hu.codecool.hangman;
 
+import javax.json.JsonObject;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 
@@ -17,13 +18,14 @@ public final class HangmanService {
 
     @Path("/start")
     @POST
-    public void start(String toGuess) {
-        game.start(toGuess);
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void start(JsonObject toGuess) {
+        game.start(toGuess.getString("toGuess"));
     }
 
     @Path("/guess/{letter}")
     @POST
     public void guess(@PathParam("letter") String letter) {
-        game.guess();
+        game.guess(letter);
     }
 }
